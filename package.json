@@ -1,0 +1,85 @@
+{
+    "name": "dot-viewer",
+    "displayName": "DOT Viewer",
+    "description": "Dot(Viz.js) Previewer for Visual Studio Code",
+    "version": "0.0.1",
+    "publisher": "rmabit",
+    "engines": {
+        "vscode": "^1.4.0"
+    },
+    "categories": [
+        "Languages"
+    ],
+    "activationEvents": [
+        "onLanguage:dot",
+        "onCommand:dot-viewer.showViewer"
+    ],
+    "main": "./out/src/extension",
+    "contributes": {
+        "commands": [{
+            "command": "dot-viewer.showViewer",
+            "title": "DOT Viewer: Show Viewer",
+            "icon": {
+                "light": "./image/preview.svg",
+                "dark": "./image/preview_inverse.svg"
+            }
+        }],
+        "menus": {
+            "editor/title": [{
+                "when": "resourceLangId == dot",
+                "command": "dot-viewer.showViewer",
+                "group": "navigation"
+            }],
+			"explorer/context": [
+				{
+					"when": "resourceLangId == dot",
+					"command": "dot-viewer.showViewer",
+					"group": "navigation"
+				}
+			]
+
+        },
+        "languages": [{
+            "id": "dot",
+            "aliases": [
+                "dot",
+                "DOT",
+                "gv"
+            ],
+            "extensions": [
+                ".dot",
+                ".gv"
+            ]
+        }],
+        "keybindings": [{
+                "command": "dot-viewer.showViewer",
+                "key": "ctrl+q d",
+                "mac": "cmd+q d"
+        }]
+    },
+    "scripts": {
+        "vscode:prepublish": "node ./node_modules/vscode/bin/compile",
+        "compile": "node ./node_modules/vscode/bin/compile -watch -p ./",
+        "postinstall": "node ./node_modules/vscode/bin/install"
+    },
+    "dependencies": {
+        "viz.js":"^1.3.0",
+        "dotparser":"^0.1.3"
+    },
+    "devDependencies": {
+        "typescript": "^1.8.5",
+        "vscode": "^0.11.0"
+    },
+    "icon": "image/dotviewer_logo.png",
+    "keywords": [
+        "dot",
+        "viz.js",
+        "graphviz",
+        "preview"
+    ],
+    "galleryBanner": {
+        "color": "#5c2d91",
+        "theme": "dark"
+    },
+    "license": "SEE LICENSE IN LICENSE.txt"
+}
