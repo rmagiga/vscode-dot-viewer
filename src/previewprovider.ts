@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import {TextDocumentContentProvider, EventEmitter, Uri, Event, Disposable, TextEditor, TextDocument, ViewColumn} from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 
 export class PreviewDocumentUtils {
 	static createPreviewDocumentUri(scheme: string, uri: Uri): Uri {
@@ -11,14 +12,6 @@ export class PreviewDocumentUtils {
 
 	static getTextDocumentUri(uri: Uri): Uri {
 		return Uri.parse(uri.query);
-	}
-
-	static getSinglePreviewTextDocumentUri(uri: Uri): Uri {
-		return this.getPreviewTextDocumentUri(uri, true);
-	}
-
-	static getPreviewTextDocumentUri(uri: Uri, isOutputQuery: boolean = false): Uri {
-		return isOutputQuery ? uri : uri.with({ query: '' });
 	}
 }
 
@@ -34,12 +27,35 @@ export abstract class AbstractPreviewDocumentContentProvider implements TextDocu
 		this._eventDelay = this.isInt(eventDelay) ? eventDelay : 300;
 	}
 
-	public abstract openPreviewDocument(uri: Uri): string | Thenable<string>;
 	public abstract render(text: string): string;
+	public abstract renderHtml(text: string): string;
 
 	private isInt(num: number): boolean {
 		return (num % 1 === 0);
 	}
+
+    public openPreviewDocument(uri: Uri): string | Thenable<string> {
+        let previewUri: Uri = PreviewDocumentUtils.getTextDocumentUri(uri);
+        return vscode.workspace.openTextDocument(previewUri).then(doc => {
+
+			let html = null;
+			const text = doc.getText();
+			html = this.renderHtml(text);
+            // try {
+            //     const text = doc.getText();
+			// 	html = this.renderHtml(text);
+            // } catch (e) {
+			// 	vscode.window.showErrorMessage("[DOT Viewer]:" + e.message ? e.message : e);
+            //     console.log(e);
+            // }
+
+            return html;
+        }, (e) => {
+			vscode.window.showErrorMessage("[DOT Viewer]:" + e.message ? e.message : e);
+			console.error("openPreviewDocument error", e);
+			debugger;
+        });
+    }
 
 	public provideTextDocumentContent(uri: Uri): string | Thenable<string> {
 		let ret: string | Thenable<string> = null;
@@ -71,7 +87,6 @@ export class PreviewDocumentController {
     private _disposable: Disposable;
 	private _scheme: string;
 	private _languageId: string;
-	// private _autoFirstShowView: boolean;
 
 	private _previewDocumentContentProvider: AbstractPreviewDocumentContentProvider;
 
@@ -82,16 +97,25 @@ export class PreviewDocumentController {
 		let subscriptions: Disposable[] = [];
 
 		let showViewerCommandId = this._scheme + '.showViewer';
+		let exportSvgCommandId = this._scheme + '.exportSvg'
 
 		// TextDocumentContentProviderの登録
 		let registration = vscode.workspace.registerTextDocumentContentProvider(scheme, previewDocumentContentProvider);
 		subscriptions.push(registration);
 
-		// コマンド
+		// コマンド登録
+		// Editor GroupのViewColumn.Oneを開く
 		let showViewerCommand = vscode.commands.registerCommand(showViewerCommandId, (uri) => {
-			this.showViewer(uri);
+			this.showEditorGroupViewer(uri, vscode.ViewColumn.One);
 		});
 		subscriptions.push(showViewerCommand);
+
+		// export svg
+		let exportSvgCommand = vscode.commands.registerCommand(exportSvgCommandId, (uri) => {
+			this.exportFileSvg(uri);
+		});
+		subscriptions.push(exportSvgCommand);
+
 
 		// テキストが変更された時
 		vscode.workspace.onDidChangeTextDocument(event => {
@@ -122,6 +146,34 @@ export class PreviewDocumentController {
         this._disposable = Disposable.from(...subscriptions);
 	}
 
+	public exportFileSvg(uri: string) {
+		if (!uri) {
+			if (vscode.window.activeTextEditor) {
+				uri = vscode.window.activeTextEditor.document.uri.fsPath;
+			}
+		}
+
+		vscode.workspace.openTextDocument(uri).then(doc => {
+			try {
+				if (this.isPreviewDocument(doc)) {
+					let svg: string = this._previewDocumentContentProvider.render(doc.getText());
+					let pathObj = path.parse(doc.uri.fsPath);
+					let prompt = "Export: " + pathObj.base;
+					pathObj.base = pathObj.name + ".svg";
+					let filename = path.format(pathObj);
+
+					vscode.window.showInputBox({ value: filename, prompt: prompt }).then(val => {
+						fs.writeFile(filename, svg);
+					});
+				}
+			} catch (e) {
+				vscode.window.showErrorMessage("[DOT Viewer]:" + e.message ? e.message : e);
+                console.log(e);
+            }
+
+		});
+	}
+
 	public isPreviewDocument(document: TextDocument): boolean {
 		let isPreview: boolean = false;
 		if (document && !document.isUntitled) {
@@ -133,12 +185,16 @@ export class PreviewDocumentController {
 	}
 
 
-	public showViewer(uri?: Uri): void {
+	public showEditorGroupViewer(uri?: Uri, viewColumn?: vscode.ViewColumn): void {
 		try {
 			let targetUri = uri;
 			if (!(targetUri instanceof Uri)) {
 				if (vscode.window.activeTextEditor) {
-					targetUri = vscode.window.activeTextEditor.document.uri;
+					if (this.isPreviewDocument(vscode.window.activeTextEditor.document)) {
+						targetUri = vscode.window.activeTextEditor.document.uri;
+					} else {
+						targetUri = vscode.window.activeTextEditor.document.uri;
+					}
 				} else {
 					return;
 				}
@@ -146,7 +202,7 @@ export class PreviewDocumentController {
 
 			let previewUri = PreviewDocumentUtils.createPreviewDocumentUri(this._scheme, targetUri);
 			let basename = path.basename(targetUri.fsPath);
-			vscode.commands.executeCommand('vscode.previewHtml', previewUri, this.getPreviewViewColumn(targetUri), '/' + basename).then((success) => {
+			vscode.commands.executeCommand('vscode.previewHtml', previewUri, this.getPreviewViewColumn(targetUri, viewColumn), '/' + basename).then((success) => {
 			}, (reason) => {
 				vscode.window.showErrorMessage(reason);
 			});
@@ -155,11 +211,13 @@ export class PreviewDocumentController {
 			console.error(e);
 			debugger;
 		}
-
-
 	}
 
-	public getPreviewViewColumn(uri: Uri): ViewColumn {
+	public getPreviewViewColumn(uri: Uri, viewColumn?: vscode.ViewColumn): ViewColumn {
+		if (viewColumn) {
+			return viewColumn;
+		}
+
 		let targetTextEditor: TextEditor = null;
 
 		const visibleTextEditors: TextEditor[] = vscode.window.visibleTextEditors;
@@ -182,90 +240,21 @@ export class PreviewDocumentController {
 		}
 
 		// プレビュー画面は、Three以外は、右側に表示する
-		let viewColumn: ViewColumn;
+		let targetViewColumn: ViewColumn;
 		switch (targetTextEditor.viewColumn) {
 			case ViewColumn.One:
-				viewColumn = ViewColumn.Two;
+				targetViewColumn = ViewColumn.Two;
 				break;
 			case ViewColumn.Two:
-				viewColumn = ViewColumn.Three;
+				targetViewColumn = ViewColumn.Three;
 				break;
 			default:
-				viewColumn = ViewColumn.One;
+				targetViewColumn = ViewColumn.One;
 				break;
 		}
 
-		return viewColumn;
+		return targetViewColumn;
 	}
-
-	// public isPreviewDocument1(document: TextDocument): boolean {
-	// 	let isPreview: boolean = false;
-	// 	if (document && !document.isUntitled) {
-	// 		if (document.languageId === this._languageId && document.uri.scheme !== this._scheme) {
-	// 			isPreview = true;
-	// 		}
-	// 	}
-	// 	return isPreview;
-	// }
-
-	// public showViewer1(document: TextDocument): void {
-	// 	try {
-	// 		// プレビュー可能なテキストか
-	// 		if (!this.isPreviewDocument1(document)) {
-	// 			return;
-	// 		}
-
-	// 		let previewUri = PreviewDocumentUtils.createPreviewDocumentUri(this._scheme, document.uri);
-	// 		let basename = path.basename(document.uri.fsPath);
-
-	// 		vscode.commands.executeCommand('vscode.previewHtml', previewUri, this.getPreviewViewColumn1(document), '/' + basename).then((success) => {
-	// 		}, (reason) => {
-	// 			vscode.window.showErrorMessage(reason);
-	// 		});
-
-	// 	} catch (e) {
-	// 		console.error(e);
-	// 		debugger;
-	// 	}
-	// }
-
-	// public getPreviewViewColumn1(document: TextDocument): ViewColumn {
-	// 	let targetTextEditor: TextEditor = null;
-
-	// 	const visibleTextEditors: TextEditor[] = vscode.window.visibleTextEditors;
-	// 	for (let textEditor of visibleTextEditors) {
-	// 		if (textEditor.document === document) {
-	// 			targetTextEditor = textEditor;
-	// 			break;
-	// 		}
-	// 	}
-
-	// 	let textEditor = vscode.window.activeTextEditor;
-	// 	if (textEditor) {
-	// 		console.log(textEditor.document.uri.toString());
-
-	// 	}
-
-	// 	if (!targetTextEditor) {
-	// 		return ViewColumn.Two;
-	// 	}
-
-	// 	// プレビュー画面は、Three以外は、右側に表示する
-	// 	let viewColumn: ViewColumn;
-	// 	switch (targetTextEditor.viewColumn) {
-	// 		case ViewColumn.One:
-	// 			viewColumn = ViewColumn.Two;
-	// 			break;
-	// 		case ViewColumn.Two:
-	// 			viewColumn = ViewColumn.Three;
-	// 			break;
-	// 		default:
-	// 			viewColumn = ViewColumn.One;
-	// 			break;
-	// 	}
-
-	// 	return viewColumn;
-	// }
 
 	public dispose() {
 		this._disposable.dispose();

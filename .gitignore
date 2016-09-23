@@ -2,3 +2,4 @@ out
 node_modules
 .DS_Store
 vsc-extension-quickstart.md
+npm-debug.log

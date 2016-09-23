@@ -12,7 +12,8 @@
     ],
     "activationEvents": [
         "onLanguage:dot",
-        "onCommand:dot-viewer.showViewer"
+        "onCommand:dot-viewer.showViewer",
+        "onCommand:dot-viewer.exportSvg"
     ],
     "main": "./out/src/extension",
     "contributes": {
@@ -23,7 +24,11 @@
                 "light": "./image/preview.svg",
                 "dark": "./image/preview_inverse.svg"
             }
-        }],
+        }, {
+            "command": "dot-viewer.exportSvg",
+            "title": "DOT Viewer: Export SVG"
+        }
+        ],
         "menus": {
             "editor/title": [{
                 "when": "resourceLangId == dot",
@@ -34,6 +39,11 @@
 				{
 					"when": "resourceLangId == dot",
 					"command": "dot-viewer.showViewer",
+					"group": "navigation"
+				},
+				{
+					"when": "resourceLangId == dot",
+					"command": "dot-viewer.exportSvg",
 					"group": "navigation"
 				}
 			]
@@ -55,7 +65,18 @@
                 "command": "dot-viewer.showViewer",
                 "key": "ctrl+q d",
                 "mac": "cmd+q d"
-        }]
+        }],
+        "configuration": {
+            "type": "object",
+            "title": "DOT Viewer configuration",
+            "properties": {
+                "dot-viewer.show.editorgroupno": {
+                    "type": "number",
+                    "default": 1,
+                    "description": "Dot Viewer: Editor Group Number. ViewColumn.One=1, Two=2, Three=3"
+                }
+            }
+        }
     },
     "scripts": {
         "vscode:prepublish": "node ./node_modules/vscode/bin/compile",

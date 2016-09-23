@@ -7,7 +7,7 @@ import {PreviewDocumentUtils, AbstractPreviewDocumentContentProvider, PreviewDoc
 
 export function activate(context: ExtensionContext) {
 
-    console.log('"dot-viewer" is now active!');
+    console.log('DOT Viewer is now active!');
 
 	const languageId = "dot";
 	const scheme = "dot-viewer";
@@ -20,38 +20,24 @@ export function activate(context: ExtensionContext) {
 export function deactivate() {
 }
 
-
-
 class DotDocumentProvider extends AbstractPreviewDocumentContentProvider {
+    private _parser;
 
-    public openPreviewDocument(uri: Uri): string | Thenable<string> {
-        let previewUri: Uri = PreviewDocumentUtils.getTextDocumentUri(uri);
-        return vscode.workspace.openTextDocument(previewUri).then(doc => {
-
-			let html = null;
-            try {
-                const text = doc.getText();
-				html = this.render(text);
-            } catch (e) {
-				vscode.window.showErrorMessage("[DOT Viewer]:" + e.message ? e.message : e);
-                console.log(e);
-            }
-
-            return html;
-        }, (e) => {
-			vscode.window.showErrorMessage("[DOT Viewer]:" + e.message ? e.message : e);
-			console.error("openPreviewDocument error", e);
-			debugger;
-        });
+	constructor(eventDelay?: number) {
+        super(eventDelay);
+        this._parser = require('dotparser');
     }
 
-	public render(text: string): string {
-		// Dot Format check
-		let parse = require('dotparser');
-		let ast = parse(text); // format error Exception
+    public render(text: string): string {
+		let ast = this._parser(text); // format error Exception
 
 		// パースに成功した場合
 		let graphTag: string = Viz(text);
+        return graphTag;        
+    }
+
+	public renderHtml(text: string): string {
+		let graphTag: string = this.render(text);
 		return `<!DOCTYPE html>
 <html>
   <head>
